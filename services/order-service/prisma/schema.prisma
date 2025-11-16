@@ -1,0 +1,288 @@
+// Order Service Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// Order Status Enum
+// ============================================
+enum OrderStatus {
+  DRAFT          // Initial state, cart not yet submitted
+  PENDING        // Order created, awaiting payment
+  PAYMENT_PENDING // Payment being processed
+  PAID           // Payment confirmed
+  CONFIRMED      // Order confirmed, ready for processing
+  PROCESSING     // Being prepared/packed
+  SHIPPED        // Shipped to customer
+  DELIVERED      // Delivered to customer
+  COMPLETED      // Order completed
+  CANCELLED      // Order cancelled
+  REFUNDED       // Payment refunded
+  FAILED         // Order failed
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+enum FulfillmentStatus {
+  PENDING
+  PROCESSING
+  PACKED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+// ============================================
+// Order Model
+// ============================================
+model Order {
+  id             String  @id @default(uuid())
+  orderNumber    String  @unique // Human-readable order number
+  userId         String  // Reference to user from auth-service
+  userEmail      String
+
+  // Status
+  status         OrderStatus       @default(PENDING)
+  paymentStatus  PaymentStatus     @default(PENDING)
+  fulfillmentStatus FulfillmentStatus @default(PENDING)
+
+  // Pricing
+  subtotal       Decimal  @db.Decimal(10, 2) // Items total
+  taxAmount      Decimal  @db.Decimal(10, 2) @default(0)
+  shippingCost   Decimal  @db.Decimal(10, 2) @default(0)
+  discountAmount Decimal  @db.Decimal(10, 2) @default(0)
+  total          Decimal  @db.Decimal(10, 2) // Grand total
+  currency       String   @default("USD")
+
+  // Customer Info
+  customerName   String?
+  customerPhone  String?
+  customerNotes  String?  @db.Text
+
+  // Metadata
+  ipAddress      String?
+  userAgent      String?
+  referrer       String?
+
+  // Timestamps
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  confirmedAt    DateTime?
+  paidAt         DateTime?
+  shippedAt      DateTime?
+  deliveredAt    DateTime?
+  cancelledAt    DateTime?
+  completedAt    DateTime?
+
+  // Relations
+  items          OrderItem[]
+  shippingAddress OrderAddress? @relation("ShippingAddress")
+  billingAddress  OrderAddress? @relation("BillingAddress")
+  payments       OrderPayment[]
+  history        OrderHistory[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([orderNumber])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+// ============================================
+// Order Item Model
+// ============================================
+model OrderItem {
+  id              String   @id @default(uuid())
+  orderId         String
+
+  // Product Reference
+  productId       String   // Reference to product-service
+  productSku      String
+  productName     String
+  productSlug     String?
+  variantId       String?  // Optional variant ID
+  variantName     String?
+
+  // Pricing
+  unitPrice       Decimal  @db.Decimal(10, 2)
+  quantity        Int
+  subtotal        Decimal  @db.Decimal(10, 2)
+  taxAmount       Decimal  @db.Decimal(10, 2) @default(0)
+  discountAmount  Decimal  @db.Decimal(10, 2) @default(0)
+  total           Decimal  @db.Decimal(10, 2)
+
+  // Product snapshot (for historical record)
+  productSnapshot Json?    // Store product details at time of order
+
+  // Metadata
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+// ============================================
+// Order Address Model
+// ============================================
+model OrderAddress {
+  id              String   @id @default(uuid())
+  orderId         String
+  type            String   // shipping or billing
+
+  // Address fields
+  firstName       String
+  lastName        String
+  company         String?
+  addressLine1    String
+  addressLine2    String?
+  city            String
+  state           String?
+  postalCode      String
+  country         String
+  phone           String?
+
+  // Metadata
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  shippingOrder   Order?   @relation("ShippingAddress", fields: [orderId], references: [id], onDelete: Cascade)
+  billingOrder    Order?   @relation("BillingAddress", fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("order_addresses")
+}
+
+// ============================================
+// Order Payment Model
+// ============================================
+model OrderPayment {
+  id              String        @id @default(uuid())
+  orderId         String
+
+  // Payment details
+  paymentId       String?       @unique // External payment ID (Stripe, etc.)
+  amount          Decimal       @db.Decimal(10, 2)
+  currency        String        @default("USD")
+  status          PaymentStatus @default(PENDING)
+
+  // Payment method
+  paymentMethod   String        // card, paypal, bank_transfer, etc.
+  paymentProvider String?       // stripe, paypal, etc.
+
+  // Card info (last 4 digits only)
+  cardLast4       String?
+  cardBrand       String?
+
+  // Metadata
+  metadata        Json?
+  errorMessage    String?       @db.Text
+
+  // Timestamps
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  processedAt     DateTime?
+
+  // Relations
+  order           Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([paymentId])
+  @@map("order_payments")
+}
+
+// ============================================
+// Order History Model (State Transitions)
+// ============================================
+model OrderHistory {
+  id              String      @id @default(uuid())
+  orderId         String
+
+  // State transition
+  fromStatus      OrderStatus?
+  toStatus        OrderStatus
+
+  // Change details
+  changedBy       String?     // User ID who made the change
+  changeReason    String?     @db.Text
+
+  // Metadata
+  metadata        Json?
+  ipAddress       String?
+
+  // Timestamp
+  createdAt       DateTime    @default(now())
+
+  // Relations
+  order           Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([createdAt])
+  @@map("order_history")
+}
+
+// ============================================
+// Cart Model (Pre-order state)
+// ============================================
+model Cart {
+  id              String      @id @default(uuid())
+  userId          String?     // Optional - can be anonymous
+  sessionId       String?     // For anonymous carts
+
+  // Metadata
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  expiresAt       DateTime?
+
+  // Relations
+  items           CartItem[]
+
+  @@unique([userId])
+  @@unique([sessionId])
+  @@index([userId])
+  @@index([sessionId])
+  @@map("carts")
+}
+
+model CartItem {
+  id              String      @id @default(uuid())
+  cartId          String
+
+  // Product reference
+  productId       String
+  productSku      String
+  variantId       String?
+  quantity        Int         @default(1)
+
+  // Price snapshot
+  unitPrice       Decimal     @db.Decimal(10, 2)
+
+  // Metadata
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relations
+  cart            Cart        @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, productId, variantId])
+  @@index([cartId])
+  @@map("cart_items")
+}
