@@ -1,0 +1,32 @@
+{
+  "name": "@ecommerce/inventory-service",
+  "version": "1.0.0",
+  "description": "Inventory Management Service with stock reservations",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@ecommerce/shared": "file:../../shared",
+    "@fastify/cors": "^8.5.0",
+    "@fastify/swagger": "^8.14.0",
+    "@fastify/swagger-ui": "^2.1.0",
+    "@prisma/client": "^5.7.1",
+    "dotenv": "^16.3.1",
+    "fastify": "^4.25.2",
+    "ioredis": "^5.3.2",
+    "winston": "^3.11.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.6",
+    "prisma": "^5.7.1",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}

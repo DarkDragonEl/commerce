@@ -1,0 +1,72 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  RELEASED
+  EXPIRED
+}
+
+model InventoryItem {
+  id                String   @id @default(uuid())
+  productId         String   @unique
+  productSku        String   @unique
+  variantId         String?
+  availableQuantity Int      @default(0)
+  reservedQuantity  Int      @default(0)
+  totalQuantity     Int      @default(0)
+  lowStockThreshold Int      @default(10)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  reservations Reservation[]
+  movements    StockMovement[]
+
+  @@index([productId])
+  @@index([availableQuantity])
+  @@map("inventory_items")
+}
+
+model Reservation {
+  id          String            @id @default(uuid())
+  itemId      String
+  orderId     String?
+  quantity    Int
+  status      ReservationStatus @default(PENDING)
+  expiresAt   DateTime
+  confirmedAt DateTime?
+  releasedAt  DateTime?
+  createdAt   DateTime          @default(now())
+
+  item InventoryItem @relation(fields: [itemId], references: [id])
+
+  @@index([itemId])
+  @@index([orderId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("reservations")
+}
+
+model StockMovement {
+  id          String   @id @default(uuid())
+  itemId      String
+  type        String
+  quantity    Int
+  reason      String?
+  reference   String?
+  createdAt   DateTime @default(now())
+
+  item InventoryItem @relation(fields: [itemId], references: [id])
+
+  @@index([itemId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("stock_movements")
+}
