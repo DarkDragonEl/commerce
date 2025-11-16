@@ -24,9 +24,10 @@ const envSchema = z.object({
   RABBITMQ_URL: z.string().url(),
 
   // Stripe
-  STRIPE_SECRET_KEY: z.string().min(1),
-  STRIPE_PUBLISHABLE_KEY: z.string().min(1),
-  STRIPE_WEBHOOK_SECRET: z.string().min(1),
+  STRIPE_MOCK: z.string().transform(val => val === 'true').default('false'),
+  STRIPE_SECRET_KEY: z.string().default('sk_test_mock'),
+  STRIPE_PUBLISHABLE_KEY: z.string().default('pk_test_mock'),
+  STRIPE_WEBHOOK_SECRET: z.string().default('whsec_mock'),
   STRIPE_API_VERSION: z.string().default('2023-10-16'),
 
   // External Services

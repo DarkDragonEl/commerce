@@ -10,7 +10,7 @@ import {
   NotFoundError,
   PaymentEventType,
 } from '@ecommerce/shared';
-import { stripeClient } from '../clients/stripe.client';
+import { paymentClient } from '../clients';
 import { PaymentRepository } from '../repositories/payment.repository';
 import { RefundRepository } from '../repositories/refund.repository';
 import { TransactionRepository } from '../repositories/transaction.repository';
@@ -42,7 +42,7 @@ export class PaymentService {
       const amountInCents = Math.round(data.amount * 100);
 
       // Create Stripe payment intent
-      const paymentIntent = await stripeClient.createPaymentIntent({
+      const paymentIntent = await paymentClient.createPaymentIntent({
         amount: amountInCents,
         currency: data.currency || 'USD',
         paymentMethodId: data.paymentMethodId,
@@ -110,7 +110,7 @@ export class PaymentService {
 
     try {
       // Confirm with Stripe
-      const paymentIntent = await stripeClient.confirmPaymentIntent(
+      const paymentIntent = await paymentClient.confirmPaymentIntent(
         payment.stripePaymentIntentId,
         paymentMethodId
       );
@@ -200,7 +200,7 @@ export class PaymentService {
 
     try {
       // Cancel with Stripe
-      await stripeClient.cancelPaymentIntent(payment.stripePaymentIntentId);
+      await paymentClient.cancelPaymentIntent(payment.stripePaymentIntentId);
 
       // Update payment status
       const updatedPayment = await this.paymentRepository.updateStatus(
@@ -268,7 +268,7 @@ export class PaymentService {
       const amountInCents = amount ? Math.round(amount * 100) : undefined;
 
       // Create refund with Stripe
-      const stripeRefund = await stripeClient.createRefund({
+      const stripeRefund = await paymentClient.createRefund({
         paymentIntentId: payment.stripePaymentIntentId,
         amount: amountInCents,
         reason,
