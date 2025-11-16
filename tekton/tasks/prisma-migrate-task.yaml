@@ -1,0 +1,25 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: prisma-migrate
+  namespace: ecommerce
+spec:
+  params:
+    - name: database-url
+      type: string
+    - name: service-path
+      type: string
+  workspaces:
+    - name: source
+  steps:
+    - name: migrate
+      image: node:20-alpine
+      script: |
+        #!/bin/sh
+        set -e
+        cd $(workspaces.source.path)/$(params.service-path)
+        npm install
+        npx prisma migrate deploy
+      env:
+        - name: DATABASE_URL
+          value: $(params.database-url)

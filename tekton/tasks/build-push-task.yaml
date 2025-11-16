@@ -1,0 +1,34 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: build-push
+  namespace: ecommerce
+spec:
+  params:
+    - name: image-name
+      type: string
+    - name: image-tag
+      type: string
+      default: latest
+    - name: context
+      type: string
+      default: .
+  workspaces:
+    - name: source
+  steps:
+    - name: build-and-push
+      image: quay.io/buildah/stable:latest
+      script: |
+        #!/bin/bash
+        set -e
+        cd $(workspaces.source.path)/$(params.context)
+        buildah bud -t $(params.image-name):$(params.image-tag) .
+        buildah push $(params.image-name):$(params.image-tag)
+      securityContext:
+        privileged: true
+      volumeMounts:
+        - name: varlibcontainers
+          mountPath: /var/lib/containers
+  volumes:
+    - name: varlibcontainers
+      emptyDir: {}

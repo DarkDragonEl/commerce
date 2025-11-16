@@ -1,0 +1,73 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: product-service-pipeline
+  namespace: ecommerce
+spec:
+  params:
+    - name: git-url
+      type: string
+      default: https://github.com/your-org/commerce.git
+    - name: git-revision
+      type: string
+      default: main
+    - name: image-name
+      type: string
+      default: image-registry.openshift-image-registry.svc:5000/ecommerce/product-service
+  workspaces:
+    - name: shared-workspace
+  tasks:
+    - name: fetch-repository
+      taskRef:
+        name: git-clone
+        kind: ClusterTask
+      workspaces:
+        - name: output
+          workspace: shared-workspace
+      params:
+        - name: url
+          value: $(params.git-url)
+        - name: revision
+          value: $(params.git-revision)
+
+    - name: build-and-push
+      taskRef:
+        name: build-push
+      runAfter:
+        - fetch-repository
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+      params:
+        - name: image-name
+          value: $(params.image-name)
+        - name: image-tag
+          value: $(params.git-revision)
+        - name: context
+          value: services/product-service
+
+    - name: migrate-database
+      taskRef:
+        name: prisma-migrate
+      runAfter:
+        - build-and-push
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+      params:
+        - name: database-url
+          value: postgresql://productuser:productpass@postgresql:5432/product_db
+        - name: service-path
+          value: services/product-service
+
+    - name: deploy
+      taskRef:
+        name: openshift-client
+        kind: ClusterTask
+      runAfter:
+        - migrate-database
+      params:
+        - name: SCRIPT
+          value: |
+            oc set image deployment/product-service product-service=$(params.image-name):$(params.git-revision) -n ecommerce
+            oc rollout status deployment/product-service -n ecommerce

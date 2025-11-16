@@ -1,0 +1,80 @@
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: github-listener
+  namespace: ecommerce
+spec:
+  serviceAccountName: tekton-triggers-sa
+  triggers:
+    - name: github-push
+      interceptors:
+        - ref:
+            name: github
+          params:
+            - name: secretRef
+              value:
+                secretName: github-secret
+                secretKey: secretToken
+            - name: eventTypes
+              value: ["push"]
+      bindings:
+        - ref: github-push-binding
+      template:
+        ref: product-service-trigger-template
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: github-push-binding
+  namespace: ecommerce
+spec:
+  params:
+    - name: git-revision
+      value: $(body.head_commit.id)
+    - name: git-url
+      value: $(body.repository.clone_url)
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: product-service-trigger-template
+  namespace: ecommerce
+spec:
+  params:
+    - name: git-revision
+    - name: git-url
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1beta1
+      kind: PipelineRun
+      metadata:
+        generateName: product-service-run-
+      spec:
+        pipelineRef:
+          name: product-service-pipeline
+        params:
+          - name: git-url
+            value: $(tt.params.git-url)
+          - name: git-revision
+            value: $(tt.params.git-revision)
+        workspaces:
+          - name: shared-workspace
+            volumeClaimTemplate:
+              spec:
+                accessModes:
+                  - ReadWriteOnce
+                resources:
+                  requests:
+                    storage: 1Gi
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: github-webhook
+  namespace: ecommerce
+spec:
+  to:
+    kind: Service
+    name: el-github-listener
+  tls:
+    termination: edge
