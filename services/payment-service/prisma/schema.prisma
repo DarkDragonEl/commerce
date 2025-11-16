@@ -1,0 +1,256 @@
+// Payment Service Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// Payment Status Enum
+// ============================================
+enum PaymentStatus {
+  PENDING       // Payment initiated
+  PROCESSING    // Payment being processed
+  REQUIRES_ACTION // Requires customer action (3D Secure)
+  SUCCEEDED     // Payment successful
+  FAILED        // Payment failed
+  CANCELLED     // Payment cancelled
+  REFUNDING     // Refund in progress
+  REFUNDED      // Fully refunded
+  PARTIALLY_REFUNDED // Partially refunded
+}
+
+enum PaymentMethod {
+  CARD          // Credit/Debit card
+  BANK_TRANSFER // Bank transfer
+  PAYPAL        // PayPal
+  WALLET        // Digital wallet
+  CRYPTO        // Cryptocurrency
+  OTHER         // Other methods
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+// ============================================
+// Payment Model
+// ============================================
+model Payment {
+  id              String        @id @default(uuid())
+
+  // External references
+  orderId         String
+  userId          String
+  userEmail       String
+
+  // Stripe references
+  stripePaymentIntentId String? @unique
+  stripeChargeId        String?
+  stripeCustomerId      String?
+
+  // Amount
+  amount          Decimal       @db.Decimal(10, 2)
+  currency        String        @default("USD")
+  amountRefunded  Decimal       @db.Decimal(10, 2) @default(0)
+
+  // Status
+  status          PaymentStatus @default(PENDING)
+
+  // Payment method
+  paymentMethod   PaymentMethod
+  paymentProvider String?       // stripe, paypal, etc.
+
+  // Card details (tokenized/last4 only)
+  cardLast4       String?
+  cardBrand       String?       // visa, mastercard, amex, etc.
+  cardExpMonth    Int?
+  cardExpYear     Int?
+
+  // Metadata
+  description     String?       @db.Text
+  metadata        Json?         // Additional custom data
+  clientSecret    String?       // For frontend payment confirmation
+  errorCode       String?
+  errorMessage    String?       @db.Text
+
+  // Timestamps
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  processedAt     DateTime?
+  succeededAt     DateTime?
+  failedAt        DateTime?
+  cancelledAt     DateTime?
+
+  // Relations
+  refunds         Refund[]
+  transactions    Transaction[]
+
+  @@index([orderId])
+  @@index([userId])
+  @@index([stripePaymentIntentId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("payments")
+}
+
+// ============================================
+// Refund Model
+// ============================================
+model Refund {
+  id              String        @id @default(uuid())
+  paymentId       String
+
+  // Stripe reference
+  stripeRefundId  String?       @unique
+
+  // Amount
+  amount          Decimal       @db.Decimal(10, 2)
+  currency        String        @default("USD")
+
+  // Status
+  status          RefundStatus  @default(PENDING)
+
+  // Details
+  reason          String?       // duplicate, fraudulent, requested_by_customer
+  description     String?       @db.Text
+  metadata        Json?
+
+  // Error handling
+  errorCode       String?
+  errorMessage    String?       @db.Text
+
+  // Timestamps
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  processedAt     DateTime?
+  succeededAt     DateTime?
+  failedAt        DateTime?
+
+  // Relations
+  payment         Payment       @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([stripeRefundId])
+  @@index([status])
+  @@map("refunds")
+}
+
+// ============================================
+// Transaction Log Model
+// ============================================
+model Transaction {
+  id              String        @id @default(uuid())
+  paymentId       String
+
+  // Transaction details
+  type            String        // payment, refund, capture, cancel
+  amount          Decimal       @db.Decimal(10, 2)
+  currency        String        @default("USD")
+  status          String        // succeeded, failed, pending
+
+  // External reference
+  externalId      String?       // Stripe charge/refund ID
+  externalType    String?       // stripe, paypal, etc.
+
+  // Details
+  description     String?       @db.Text
+  metadata        Json?
+
+  // Result
+  success         Boolean       @default(false)
+  errorCode       String?
+  errorMessage    String?       @db.Text
+
+  // Timestamps
+  createdAt       DateTime      @default(now())
+
+  // Relations
+  payment         Payment       @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+  @@map("transactions")
+}
+
+// ============================================
+// Payment Method Model (Saved payment methods)
+// ============================================
+model SavedPaymentMethod {
+  id              String        @id @default(uuid())
+  userId          String
+
+  // Stripe reference
+  stripePaymentMethodId String  @unique
+
+  // Type
+  type            String        // card, bank_account, etc.
+
+  // Card details
+  cardLast4       String?
+  cardBrand       String?
+  cardExpMonth    Int?
+  cardExpYear     Int?
+
+  // Billing details
+  billingName     String?
+  billingEmail    String?
+  billingAddress  Json?
+
+  // Status
+  isDefault       Boolean       @default(false)
+  isActive        Boolean       @default(true)
+
+  // Metadata
+  metadata        Json?
+
+  // Timestamps
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([stripePaymentMethodId])
+  @@map("saved_payment_methods")
+}
+
+// ============================================
+// Webhook Event Model
+// ============================================
+model WebhookEvent {
+  id              String        @id @default(uuid())
+
+  // Stripe event
+  stripeEventId   String        @unique
+  eventType       String        // payment_intent.succeeded, etc.
+
+  // Payload
+  payload         Json
+
+  // Processing
+  processed       Boolean       @default(false)
+  processedAt     DateTime?
+  processingError String?       @db.Text
+
+  // Retry
+  retryCount      Int           @default(0)
+  lastRetryAt     DateTime?
+
+  // Timestamps
+  createdAt       DateTime      @default(now())
+
+  @@index([stripeEventId])
+  @@index([eventType])
+  @@index([processed])
+  @@index([createdAt])
+  @@map("webhook_events")
+}
