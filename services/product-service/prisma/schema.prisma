@@ -1,0 +1,234 @@
+// Product Service Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========================================
+// ENUMS
+// ========================================
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+  OUT_OF_STOCK
+}
+
+// ========================================
+// MODELS
+// ========================================
+
+model Product {
+  id          String        @id @default(uuid())
+  sku         String        @unique
+  slug        String        @unique
+  name        String
+  description String?       @db.Text
+  shortDesc   String?       @db.VarChar(500)
+
+  // Pricing
+  price           Decimal  @db.Decimal(10, 2)
+  compareAtPrice  Decimal? @db.Decimal(10, 2) // Original price for showing discounts
+  costPrice       Decimal? @db.Decimal(10, 2) // Cost for profit calculations (admin only)
+
+  // Inventory (basic tracking, detailed tracking in Inventory Service)
+  stockQuantity      Int     @default(0)
+  lowStockThreshold  Int     @default(5)
+  trackInventory     Boolean @default(true)
+  allowBackorder     Boolean @default(false)
+
+  // Status
+  status          ProductStatus @default(DRAFT)
+  isActive        Boolean       @default(true)
+  isFeatured      Boolean       @default(false)
+  isNew           Boolean       @default(false)
+  onSale          Boolean       @default(false)
+
+  // SEO
+  metaTitle       String? @db.VarChar(60)
+  metaDescription String? @db.VarChar(160)
+  metaKeywords    String?
+
+  // Media
+  images        ProductImage[]
+  primaryImage  String?        // URL to primary product image
+
+  // Categorization
+  categoryId    String?
+  category      Category?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  // Variants
+  variants      ProductVariant[]
+
+  // Attributes (custom key-value pairs)
+  attributes    ProductAttribute[]
+
+  // Related Products
+  relatedTo     ProductRelation[] @relation("ProductRelatedTo")
+  relatedFrom   ProductRelation[] @relation("ProductRelatedFrom")
+
+  // Reviews Summary (actual reviews in separate service)
+  reviewCount   Int     @default(0)
+  averageRating Decimal @default(0) @db.Decimal(3, 2)
+
+  // Metrics
+  viewCount     Int @default(0)
+  purchaseCount Int @default(0)
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  publishedAt DateTime?
+  deletedAt   DateTime?
+
+  @@index([categoryId])
+  @@index([status])
+  @@index([slug])
+  @@index([sku])
+  @@index([isActive, status])
+  @@index([isFeatured])
+  @@index([onSale])
+  @@index([createdAt])
+  @@map("products")
+}
+
+model Category {
+  id          String     @id @default(uuid())
+  name        String
+  slug        String     @unique
+  description String?    @db.Text
+  image       String?
+
+  // Hierarchy
+  parentId    String?
+  parent      Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Category[] @relation("CategoryHierarchy")
+
+  // SEO
+  metaTitle       String? @db.VarChar(60)
+  metaDescription String? @db.VarChar(160)
+
+  // Products
+  products    Product[]
+
+  // Status
+  isActive    Boolean @default(true)
+  sortOrder   Int     @default(0)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([parentId])
+  @@index([slug])
+  @@index([isActive])
+  @@index([sortOrder])
+  @@map("categories")
+}
+
+model ProductVariant {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  sku  String @unique
+  name String
+
+  // Pricing (override product price)
+  price          Decimal? @db.Decimal(10, 2)
+  compareAtPrice Decimal? @db.Decimal(10, 2)
+
+  // Inventory
+  stockQuantity Int @default(0)
+
+  // Variant Options (size, color, etc.)
+  // Stored as JSON: {"size": "L", "color": "Red", "material": "Cotton"}
+  options Json
+
+  // Media
+  image String?
+
+  // Status
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+  @@index([sku])
+  @@index([isActive])
+  @@map("product_variants")
+}
+
+model ProductImage {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  url       String
+  altText   String?
+  sortOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+  @@index([sortOrder])
+  @@map("product_images")
+}
+
+model ProductAttribute {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  name  String // e.g., "Material", "Weight", "Dimensions"
+  value String // e.g., "Cotton", "500g", "10x20x5 cm"
+
+  @@unique([productId, name])
+  @@index([productId])
+  @@map("product_attributes")
+}
+
+model ProductRelation {
+  id              String  @id @default(uuid())
+  productId       String
+  relatedProductId String
+  relationType    String  @default("related") // related, upsell, cross-sell
+
+  product         Product @relation("ProductRelatedTo", fields: [productId], references: [id], onDelete: Cascade)
+  relatedProduct  Product @relation("ProductRelatedFrom", fields: [relatedProductId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([productId, relatedProductId])
+  @@index([productId])
+  @@index([relatedProductId])
+  @@map("product_relations")
+}
+
+// ========================================
+// AUDIT & HISTORY
+// ========================================
+
+model ProductAuditLog {
+  id         String   @id @default(uuid())
+  productId  String
+  action     String   // created, updated, deleted, published
+  changes    Json?    // Changed fields
+  userId     String?  // Who made the change
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([productId])
+  @@index([createdAt])
+  @@map("product_audit_logs")
+}

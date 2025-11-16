@@ -1,0 +1,72 @@
+# Dependencies
+node_modules/
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-debug.log*
+
+# Production builds
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+**/.env
+**/.env.local
+
+# Testing
+coverage/
+*.lcov
+.nyc_output
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Prisma
+**/prisma/dev.db
+**/prisma/dev.db-journal
+
+# Docker
+**/.dockerignore
+
+# Logs
+logs/
+*.log
+lerna-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OpenShift
+**/*.secret.yaml
+
+# Kubernetes
+**/*-secret.yaml
+
+# Build artifacts
+*.tgz
+*.tar.gz
+
+# Misc
+.cache/
+.parcel-cache/
