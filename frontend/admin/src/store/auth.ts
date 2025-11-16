@@ -1,0 +1,32 @@
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import type { User } from '../types';
+
+interface AuthStore {
+  user: User | null;
+  token: string | null;
+  setAuth: (user: User, token: string) => void;
+  clearAuth: () => void;
+}
+
+export const useAuthStore = create<AuthStore>()(
+  persist(
+    (set) => ({
+      user: null,
+      token: null,
+
+      setAuth: (user, token) => {
+        localStorage.setItem('admin_token', token);
+        set({ user, token });
+      },
+
+      clearAuth: () => {
+        localStorage.removeItem('admin_token');
+        set({ user: null, token: null });
+      },
+    }),
+    {
+      name: 'admin-auth-storage',
+    }
+  )
+);
