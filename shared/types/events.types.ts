@@ -121,6 +121,9 @@ export enum UserEventType {
   PASSWORD_CHANGED = 'user.password_changed',
   PROFILE_UPDATED = 'user.profile_updated',
   DELETED = 'user.deleted',
+  LOGIN = 'user.login',
+  LOGOUT = 'user.logout',
+  LOGIN_FAILED = 'user.login_failed',
 }
 
 export interface UserRegisteredEvent extends BaseEvent {
@@ -128,13 +131,41 @@ export interface UserRegisteredEvent extends BaseEvent {
   data: {
     userId: string;
     email: string;
-    firstName: string;
-    lastName: string;
+    username: string;
+    firstName?: string;
+    lastName?: string;
   };
 }
 
 export interface UserEmailVerifiedEvent extends BaseEvent {
   type: UserEventType.EMAIL_VERIFIED;
+  data: {
+    userId: string;
+    email: string;
+  };
+}
+
+export interface UserLoginEvent extends BaseEvent {
+  type: UserEventType.LOGIN;
+  data: {
+    userId: string;
+    username: string;
+    email: string;
+    ipAddress?: string;
+    userAgent?: string;
+  };
+}
+
+export interface UserLogoutEvent extends BaseEvent {
+  type: UserEventType.LOGOUT;
+  data: {
+    userId: string;
+    username: string;
+  };
+}
+
+export interface UserPasswordChangedEvent extends BaseEvent {
+  type: UserEventType.PASSWORD_CHANGED;
   data: {
     userId: string;
     email: string;
@@ -250,7 +281,10 @@ export type OrderEvent =
 
 export type UserEvent =
   | UserRegisteredEvent
-  | UserEmailVerifiedEvent;
+  | UserEmailVerifiedEvent
+  | UserLoginEvent
+  | UserLogoutEvent
+  | UserPasswordChangedEvent;
 
 export type PaymentEvent =
   | PaymentSucceededEvent

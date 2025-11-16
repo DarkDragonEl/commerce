@@ -1,0 +1,217 @@
+// Auth Service Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// User Model (synced from Keycloak)
+// ============================================
+model User {
+  id            String   @id @default(uuid())
+  keycloakId    String   @unique // Keycloak user ID
+  email         String   @unique
+  username      String   @unique
+  firstName     String?
+  lastName      String?
+  emailVerified Boolean  @default(false)
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  sessions      Session[]
+  refreshTokens RefreshToken[]
+  loginHistory  LoginHistory[]
+  apiKeys       ApiKey[]
+
+  @@index([keycloakId])
+  @@index([email])
+  @@index([username])
+  @@map("users")
+}
+
+// ============================================
+// Session Model
+// ============================================
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  sessionToken String   @unique
+  ipAddress    String?
+  userAgent    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  lastActivity DateTime @default(now())
+  isActive     Boolean  @default(true)
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sessionToken])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// ============================================
+// Refresh Token Model
+// ============================================
+model RefreshToken {
+  id           String    @id @default(uuid())
+  userId       String
+  token        String    @unique
+  keycloakToken String?  @db.Text // Store Keycloak refresh token
+  expiresAt    DateTime
+  createdAt    DateTime  @default(now())
+  revokedAt    DateTime?
+  replacedBy   String?   // Token that replaced this one
+  isRevoked    Boolean   @default(false)
+  ipAddress    String?
+  userAgent    String?
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ============================================
+// Login History Model
+// ============================================
+model LoginHistory {
+  id           String    @id @default(uuid())
+  userId       String
+  loginMethod  String // password, oauth, sso, api_key
+  success      Boolean
+  ipAddress    String?
+  userAgent    String?
+  location     String? // Geo-location if available
+  failureReason String?
+  metadata     Json?    // Additional metadata
+  createdAt    DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([success])
+  @@index([createdAt])
+  @@map("login_history")
+}
+
+// ============================================
+// API Key Model (for service-to-service auth)
+// ============================================
+model ApiKey {
+  id          String    @id @default(uuid())
+  userId      String?   // Optional: can be user or service API key
+  name        String    // Friendly name
+  keyHash     String    @unique // Hashed API key
+  prefix      String    // First 8 chars for identification
+  scopes      String[]  // Permissions/scopes
+  expiresAt   DateTime?
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  revokedAt   DateTime?
+  isActive    Boolean   @default(true)
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([keyHash])
+  @@index([prefix])
+  @@index([userId])
+  @@map("api_keys")
+}
+
+// ============================================
+// Role Assignment (local cache from Keycloak)
+// ============================================
+model RoleAssignment {
+  id         String   @id @default(uuid())
+  userId     String
+  role       String   // Role name from Keycloak
+  resource   String?  // Optional resource (for resource-based roles)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  syncedAt   DateTime @default(now()) // Last sync from Keycloak
+
+  @@unique([userId, role, resource])
+  @@index([userId])
+  @@index([role])
+  @@map("role_assignments")
+}
+
+// ============================================
+// Permission Model (for fine-grained access control)
+// ============================================
+model Permission {
+  id          String   @id @default(uuid())
+  resource    String   // e.g., "product", "order", "user"
+  action      String   // e.g., "read", "write", "delete"
+  description String?
+  createdAt   DateTime @default(now())
+
+  @@unique([resource, action])
+  @@map("permissions")
+}
+
+// ============================================
+// OAuth Provider (for social login)
+// ============================================
+model OAuthProvider {
+  id           String   @id @default(uuid())
+  userId       String
+  provider     String   // google, github, facebook, etc.
+  providerId   String   // ID from the provider
+  accessToken  String?  @db.Text
+  refreshToken String?  @db.Text
+  expiresAt    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([provider, providerId])
+  @@index([userId])
+  @@map("oauth_providers")
+}
+
+// ============================================
+// Password Reset Token
+// ============================================
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  email     String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email])
+  @@index([token])
+  @@map("password_reset_tokens")
+}
+
+// ============================================
+// Email Verification Token
+// ============================================
+model EmailVerificationToken {
+  id        String    @id @default(uuid())
+  email     String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email])
+  @@index([token])
+  @@map("email_verification_tokens")
+}
